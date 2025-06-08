@@ -1,6 +1,6 @@
 GNU Shepherd on Void Linux
 ==========================
-I replaced `Runit` with [https://www.gnu.org/software/shepherd](GNU Shepherd) on my Void Linux installation.
+I replaced `Runit` with [GNU Shepherd](https://www.gnu.org/software/shepherd) on my Void Linux installation.
 Why? For fun I suppose.
 
 ## The purpose of this repository
