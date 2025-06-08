@@ -1,0 +1,23 @@
+#!/bin/sh
+# vim:ft=bash
+[ -w "/" ] || mount -o remount,rw "/"
+
+# may need to be adjusted for your system
+PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+
+# start the execution of early boot scripts
+sh /etc/init.d/boot
+
+# the default location of the shepherd configuration file is at
+# /etc/shepherd.scm; I prefer having it within it's own directory.
+SHEPHERD_CONFIG="/etc/shepherd/config.scm"
+SHEPHERD_SOCKET="/run/shepherd/socket"
+SHEPHERD_LOGFILE="/var/log/shepherd/shepherd.log"
+
+# The socket should never be there upon booting,
+# but it can't hurt to check.
+[ -e "${SHEPHERD_SOCKET}" ] && rm "${SHEPHERD_SOCKET}"
+
+# hand over execution to shepherd now that
+# early-boot operations are finished
+exec shepherd --config="${SHEPHERD_CONFIG}" --socket="${SHEPHERD_SOCKET}" --logfile="${SHEPHERD_LOGFILE}" "$@" >/dev/null 2>&1

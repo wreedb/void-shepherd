@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -- pseudofs \
+       static-nodes \
+       modules \
+       udev \
+       console-setup \
+       filesystems \
+       swap \
+       net-interfaces \
+       timezone \
+       hostname \
+       misc \
+       sbin-merge \
+       janitor
+
+for f in "$@"
+do
+    guile --no-auto-compile "/etc/init.d/${f}.scm"
+done

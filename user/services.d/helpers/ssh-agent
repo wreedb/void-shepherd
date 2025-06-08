@@ -1,0 +1,87 @@
+#!/bin/sh
+exec 2>&1
+
+bail() { echo "[init/ssh-agent] error: ${1}"; exit 1;  }
+
+# fail instantly when runtime dir isn't defined
+if [ -z "${XDG_RUNTIME_DIR}" ]
+then
+    bail "XDG_RUNTIME_DIR is not defined, exiting."
+fi
+
+# check for needed programs in user's path
+needed_cmd()
+{
+    command -v "$1" >/dev/null 2>&1 || bail "needed command '$1' is not present in PATH."
+}
+
+# commands needed for this script
+set -- which id pgrep ssh-agent head perl cut
+for cmd in "$@"
+do
+    needed_cmd "${cmd}"
+done
+# clear "$@" variable
+set --;
+
+_bin_ssh_agent="$(which ssh-agent)"
+_user_name="$(id -un)"
+_info_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ssh"
+_rt_dir="${XDG_RUNTIME_DIR}/ssh"
+
+_agent_up()
+{
+    # create a runtime dir for ssh-related files
+    if [ ! -d "${_rt_dir}" ]
+    then
+        mkdir -pm 700 "${_rt_dir}" || bail "could not create directory ${_rt_dir}"
+    fi
+
+    # create the directory that will contain information for shell
+    # init files to source
+    if [ ! -d "${_info_dir}/ssh" ]
+    then
+        mkdir -p "${_info_dir}/ssh" || bail "could not create directory ${_info_dir}"
+    fi
+
+    # start the agent and redirect the first 2 lines of output
+    # to a placeholder file
+    "${_bin_ssh_agent}" -a ${_rt_dir}/socket -s | head -n2 > "${_info_dir}/info"
+
+    # capture the pid by its full path, started only by current user
+    _agent_pid="$(pgrep -u ${_user_name} -f ${_bin_ssh_agent})"
+    [ -n "${_agent_pid}" ] || bail "process id wasn't correctly found for ssh-agent"
+
+    printf '%s' "${_agent_pid}" > "${_rt_dir}/pid"
+
+    # some implementations of `sed` handle flags differently.
+    # `perl` is extremely common and has no such problem
+    cut -d ';' -f 1 "${_info_dir}/info" | perl -pe "s|^|set -gx |g; s|=|\x20|g" > "${_info_dir}/agent.fish"
+    cut -d ';' -f 1 "${_info_dir}/info" | perl -pe "s|^|export |g" > "${_info_dir}/agent.sh"
+    rm -f "${_info_dir}/info" >/dev/null 2>&1 || :
+}
+
+_agent_down()
+{
+    pkill -u "${_user_name}" ssh-agent || :
+    [ -d "${_rt_dir}" ] && rm -rf "${_rt_dir}"/*
+    [ -d "${_info_dir}" ] && rm -rf "${_info_dir}"/*
+}
+
+case "$1" in
+    "u"|"up")
+        _agent_up
+        ;;
+    "d"|"down")
+        _agent_down
+        ;;
+    *)
+        bail "argument: '$1' is not recongnized."
+        ;;
+esac
+
+# clean up variable and function namespaces
+unset _info_dir _agent_pid _bin_ssh_agent _rt_dir _user_name
+unset -f bail needed_cmd _agent_up _agent_down
+
+exit 0

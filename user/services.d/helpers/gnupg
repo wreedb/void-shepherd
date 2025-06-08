@@ -1,0 +1,109 @@
+#!/bin/sh
+
+_program="$1"
+_action="$2"
+
+# getting the full path from `which` prevents us from matching
+# against the name of this script rather than the programs themselves
+_dirmngr="$(which dirmngr)"
+_agent="$(which gpg-agent)"
+
+if [ ! -d "${XDG_RUNTIME_DIR}" ]
+then
+    echo "[init/gnupg] error: XDG_RUNTIME_DIR is not set, exiting."
+    exit 1
+fi
+
+rtd="${XDG_RUNTIME_DIR}/gnupg"
+cachedir="${XDG_CACHE_HOME:-$HOME/.cache}/gnupg"
+
+[ -d "${rtd}"         ] || mkdir -p "${rtd}" -m 700
+[ -d "${rtd}/pid"     ] || mkdir -p "${rtd}/pid" -m 700
+[ -d "${rtd}/log"     ] || mkdir -p "${rtd}/log" -m 700
+[ -d "${rtd}/sockets" ] || mkdir -p "${rtd}/sockets" -m 700
+[ -d "${cachedir}"    ] || mkdir -p "${cachedir}"
+
+dirmngr_up()
+{
+    "${_dirmngr}" \
+        --daemon \
+        --log-file "${rtd}/log/dirmngr.log" \
+        --socket-name "${rtd}/sockets/dirmngr" \
+        --sh > "${cachedir}/dirmngr-info"
+
+    pgrep -f "${_dirmngr}" > "${rtd}/pid/dirmngr.pid"
+
+    # these cut/sed commands convert the output from dirmngr-info into scripts
+    # for fish or a posix compatible shell to read.
+    cut -d';' -f1 "${cachedir}/dirmngr-info" | sed "s|^|export |g" > "${cachedir}/dirmngr.sh"
+    cut -d';' -f1 "${cachedir}/dirmngr-info" | sed "s|^|set -gx |g; s|=| |g;" > "${cachedir}/dirmngr.fish"
+    rm -f "${cachedir}/dirmngr-info"
+
+}
+
+dirmngr_down()
+{
+    gpgconf --kill dirmngr
+    rm -f "${rtd}"/log/dirmngr.log
+    rm -f "${rtd}"/sockets/dirmngr
+    rm -f "${rtd}"/pid/dirmngr.pid
+}
+
+agent_up() {
+
+    "${_agent}" \
+        --daemon \
+        --extra-socket="${rtd}/sockets/agent" \
+        --log-file="${rtd}/log/agent.log"
+
+    pgrep -f "${_agent}" > "${rtd}/pid/agent.pid"
+    return 0
+}
+
+agent_down()
+{
+
+    gpgconf --kill gpg-agent
+    rm -f "${rtd}/pid/agent.pid"
+    rm -f "${rtd}/log/agent.log"
+    rm -f "${rtd}/sockets/agent"
+}
+
+do_agent()
+{
+    case "$1" in
+        up)
+            agent_up ;;
+        down)
+            agent_down ;;
+        *)
+            echo "[init/gnupg] error, operaction: '${1}' is not recognized."
+            return 1 ;;
+    esac
+}
+
+do_dirmngr()
+{
+    case "$1" in
+        up)
+            dirmngr_up ;;
+        down)
+            dirmngr_down ;;
+        *)
+            echo "[init/gnupg] error, operation: '${1}' is not recognized."
+            return 1 ;;
+    esac
+}
+
+case "${_program}" in
+    agent)
+        do_agent "${_action}";;
+    dirmngr)
+        do_dirmngr "${_action}";;
+    *)
+        echo "[init/gnupg] error, program: '${_program}' is not recognized."
+        exit 1 ;;
+esac
+
+unset cachdir rtd _agent _dirmngr _action _program
+exit 0

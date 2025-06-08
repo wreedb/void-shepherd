@@ -1,0 +1,10 @@
+(load "/etc/init.d/lib.scm")
+
+(msg-ok "launching initial udev daemon")
+(system "udevd --daemon")
+(msg-ok "triggering subsystems")
+(system "udevadm trigger --action=add --type=subsystems")
+(msg-ok "triggering devices")
+(system "udevadm trigger --action=add --type=devices")
+(msg-ok "waiting for devices to settle")
+(system "udevadm settle")
